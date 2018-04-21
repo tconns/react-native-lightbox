@@ -1,10 +1,31 @@
 import React, { Component, Children, cloneElement } from "react";
 import PropTypes from "prop-types";
-import { Animated, TouchableHighlight, View } from "react-native";
+import {
+  Animated,
+  TouchableHighlight,
+  View,
+  TouchableOpacity,
+  PanResponder,
+  Dimensions
+} from "react-native";
 
 import LightboxOverlay from "./LightboxOverlay";
+import _ from "lodash";
 
 export default class Lightbox extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      isOpen: false,
+      origin: { x: 0, y: 0, width: 0, height: 0 },
+      layoutOpacity: new Animated.Value(1)
+    };
+    this.open = _.debounce(this.open, this.props.timeDebounce, {
+      leading: true,
+      trailing: false
+    });
+  }
+
   static propTypes = {
     activeProps: PropTypes.object,
     renderHeader: PropTypes.func,
@@ -20,7 +41,10 @@ export default class Lightbox extends Component {
       tension: PropTypes.number,
       friction: PropTypes.number
     }),
-    swipeToDismiss: PropTypes.bool
+    swipeToDismiss: PropTypes.bool,
+    onLeftToRight: PropTypes.func,
+    onRightToLeft: PropTypes.func,
+    timeDebounce: PropTypes.number
   };
 
   static defaultProps = {
@@ -28,19 +52,27 @@ export default class Lightbox extends Component {
     onOpen: () => {},
     didOpen: () => {},
     willClose: () => {},
-    onClose: () => {}
+    onClose: () => {},
+    onLeftToRight: () => {},
+    onRightToLeft: () => {},
+    timeDebounce: 1000
   };
 
-  state = {
-    isOpen: false,
-    origin: {
-      x: 0,
-      y: 0,
-      width: 0,
-      height: 0
-    },
-    layoutOpacity: new Animated.Value(1)
-  };
+  _panResponder = PanResponder.create({
+    onMoveShouldSetResponderCapture: () => true,
+    onMoveShouldSetPanResponderCapture: () => true,
+    onPanResponderMove: null, // Animated.event([null, { dx: this.translateX }]),
+    onPanResponderRelease: (e, { vx, dx }) => {
+      const screenWidth = Dimensions.get("window").width;
+      if (Math.abs(vx) >= 0.5 || Math.abs(dx) >= 0.5 * screenWidth) {
+        if (dx < 0) {
+          this.props.onRightToLeft();
+        } else {
+          this.props.onLeftToRight();
+        }
+      }
+    }
+  });
 
   getContent = () => {
     if (this.props.renderContent) {
@@ -104,12 +136,7 @@ export default class Lightbox extends Component {
 
   onClose = () => {
     this.state.layoutOpacity.setValue(1);
-    this.setState(
-      {
-        isOpen: false
-      },
-      this.props.onClose
-    );
+    this.setState({ isOpen: false }, this.props.onClose);
   };
 
   render() {
@@ -120,7 +147,10 @@ export default class Lightbox extends Component {
         style={this.props.style}
         onLayout={() => {}}
       >
-        <Animated.View style={{ opacity: this.state.layoutOpacity }}>
+        <Animated.View
+          style={{ opacity: this.state.layoutOpacity }}
+          {...this._panResponder.panHandlers}
+        >
           <TouchableHighlight
             underlayColor={this.props.underlayColor}
             onPress={this.open}
